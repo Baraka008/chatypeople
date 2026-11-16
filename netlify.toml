@@ -25,3 +25,8 @@ status = 200
 from = "/api/users"
 to = "/.netlify/functions/users"
 status = 200
+
+[[redirects]]
+from = "/api/notifications"
+to = "/.netlify/functions/notifications"
+status = 200

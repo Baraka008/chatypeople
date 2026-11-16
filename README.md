@@ -22,6 +22,12 @@ Set a display name in the app, then choose **New** to find someone or make a gro
 
 Run `npm run build` to build the static frontend into `dist`.
 
+## Message actions, notifications, and install
+
+- Use **Copy** on a message to copy its text. Your own messages also have **Edit** and **Delete** actions; deleting removes the message for everyone in that conversation.
+- Use the bell in a conversation to enable or turn off notifications. The browser asks for permission. Browser notifications work while the app is open; background push requires a Neon-backed API and the `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`, and (optionally) `VAPID_SUBJECT` environment variables on the server. Never put the private key in frontend code or commit it.
+- Use the download button when your browser offers installation. If it is unavailable, open the browser menu and choose **Install app** or **Add to Home Screen**. The app must be served from HTTPS to install on other devices; `localhost` is supported for local development.
+
 Set a different port with the `PORT` environment variable if port 3000 is already in use:
 
 ```powershell

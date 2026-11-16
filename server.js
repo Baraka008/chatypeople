@@ -16,7 +16,11 @@ const ROOM = { id: "lounge", type: "room", name: "The Lounge", members: [] };
 const MIME_TYPES = {
   ".css": "text/css; charset=utf-8",
   ".html": "text/html; charset=utf-8",
+  ".json": "application/manifest+json; charset=utf-8",
   ".js": "text/javascript; charset=utf-8",
+  ".png": "image/png",
+  ".svg": "image/svg+xml",
+  ".webmanifest": "application/manifest+json; charset=utf-8",
 };
 
 let data = { users: [], conversations: [ROOM], messages: [], nextId: 1 };
@@ -127,7 +131,17 @@ function conversationPreview(conversation, clientId) {
 }
 
 async function serveStatic(pathname, response) {
-  const files = { "/": "index.html", "/index.html": "index.html", "/styles.css": "styles.css", "/app.js": "app.js" };
+  const files = {
+    "/": "index.html",
+    "/index.html": "index.html",
+    "/styles.css": "styles.css",
+    "/app.js": "app.js",
+    "/manifest.webmanifest": "manifest.webmanifest",
+    "/sw.js": "sw.js",
+    "/icon.svg": "icon.svg",
+    "/icon-192.png": "icon-192.png",
+    "/icon-512.png": "icon-512.png",
+  };
   const filename = files[pathname];
   if (!filename) {
     sendJson(response, 404, { error: "Not found." });
@@ -145,6 +159,11 @@ async function serveStatic(pathname, response) {
 }
 
 async function handleApi(request, response, url) {
+  if (url.pathname === "/api/notifications") {
+    sendJson(response, 503, { error: "Closed-app push notifications require the Neon-backed server. Browser notifications work while this server is open." });
+    return;
+  }
+
   if (url.pathname === "/api/profile" && request.method === "POST") {
     const body = await readJson(request);
     const id = typeof body.id === "string" ? body.id.trim() : "";
@@ -265,8 +284,40 @@ async function handleApi(request, response, url) {
       return;
     }
     sendJson(response, 200, {
-      messages: data.messages.filter((message) => message.conversationId === conversationId && message.id > after),
+      messages: data.messages
+        .filter((message) => message.conversationId === conversationId && message.id > after)
+        .map((message) => ({ editedAt: null, ...message })),
     });
+    return;
+  }
+
+  if (messageRoute && ["PATCH", "DELETE"].includes(request.method)) {
+    const conversationId = decodeURIComponent(messageRoute[1]);
+    const body = await readJson(request);
+    const clientId = typeof body.clientId === "string" ? body.clientId : "";
+    const messageId = Number(body.messageId);
+    const conversation = findConversation(conversationId);
+    const index = data.messages.findIndex((message) =>
+      message.conversationId === conversationId && message.id === messageId && message.clientId === clientId);
+    if (!conversation || !canAccess(conversation, clientId) || index < 0) {
+      sendJson(response, 404, { error: "Message not found or you cannot change it." });
+      return;
+    }
+    if (request.method === "DELETE") {
+      data.messages.splice(index, 1);
+      await persistData();
+      sendJson(response, 200, { deleted: true });
+      return;
+    }
+    const text = typeof body.text === "string" ? body.text.trim() : "";
+    if (text.length < 1 || text.length > 2000) {
+      sendJson(response, 400, { error: "Messages must be between 1 and 2,000 characters." });
+      return;
+    }
+    data.messages[index].text = text;
+    data.messages[index].editedAt = new Date().toISOString();
+    await persistData();
+    sendJson(response, 200, { message: data.messages[index] });
     return;
   }
 
@@ -308,7 +359,7 @@ async function handleApi(request, response, url) {
 }
 
 async function handleNeonRequest(request, response, url) {
-  const { profile, users, conversations, messages } = require("./serverless/chat");
+  const { profile, users, conversations, messages, notifications } = require("./serverless/chat");
   const messageRoute = url.pathname.match(/^\/api\/conversations\/([^/]+)\/messages$/);
   const query = Object.fromEntries(url.searchParams.entries());
   let handler;
@@ -316,6 +367,7 @@ async function handleNeonRequest(request, response, url) {
   if (url.pathname === "/api/profile") handler = profile;
   else if (url.pathname === "/api/users") handler = users;
   else if (url.pathname === "/api/conversations") handler = conversations;
+  else if (url.pathname === "/api/notifications") handler = notifications;
   else if (messageRoute) {
     handler = messages;
     query.id = decodeURIComponent(messageRoute[1]);
@@ -324,7 +376,7 @@ async function handleNeonRequest(request, response, url) {
     return;
   }
 
-  const body = request.method === "POST" ? await readJson(request) : {};
+  const body = ["POST", "PATCH", "DELETE"].includes(request.method) ? await readJson(request) : {};
   const apiResponse = {
     status(statusCode) {
       response.statusCode = statusCode;

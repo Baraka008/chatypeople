@@ -1,6 +1,7 @@
 const { attachDatabasePool } = require("@vercel/functions");
 const { Pool } = require("pg");
 const { createHash, randomUUID } = require("node:crypto");
+const webPush = require("web-push");
 
 const ROOM = { id: "lounge", type: "room", name: "The Lounge", members: [] };
 const MAX_GROUP_MEMBERS = 32;
@@ -46,10 +47,18 @@ async function ensureSchema() {
           client_id TEXT NOT NULL REFERENCES chat_users(id),
           sender VARCHAR(32) NOT NULL,
           text VARCHAR(2000) NOT NULL,
-          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+          created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          edited_at TIMESTAMPTZ
         );
+        ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS edited_at TIMESTAMPTZ;
         CREATE INDEX IF NOT EXISTS chat_messages_conversation_id_id_idx
           ON chat_messages (conversation_id, id);
+        CREATE TABLE IF NOT EXISTS chat_push_subscriptions (
+          endpoint TEXT PRIMARY KEY,
+          client_id TEXT NOT NULL REFERENCES chat_users(id) ON DELETE CASCADE,
+          keys JSONB NOT NULL,
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        );
         INSERT INTO chat_conversations (id, type, name, members)
         VALUES ('lounge', 'room', 'The Lounge', '[]'::jsonb)
         ON CONFLICT (id) DO NOTHING;
@@ -263,6 +272,91 @@ async function getConversation(pool, id, clientId) {
   };
 }
 
+async function handleNotifications(request, response) {
+  if (request.method === "GET") {
+    if (!process.env.VAPID_PUBLIC_KEY) {
+      throw invalid(503, "Push notifications are not configured on this server.");
+    }
+    send(response, 200, { publicKey: process.env.VAPID_PUBLIC_KEY });
+    return;
+  }
+  if (!requireMethod(request, response, "POST")) return;
+  const body = bodyOf(request);
+  const clientId = typeof body?.clientId === "string" ? body.clientId : "";
+  const pool = database();
+  const user = await pool.query("SELECT id FROM chat_users WHERE id = $1", [clientId]);
+  if (!user.rowCount) throw invalid(401, "Set your profile before changing notification settings.");
+
+  if (body?.action === "unsubscribe") {
+    const endpoint = typeof body.endpoint === "string" ? body.endpoint : "";
+    await pool.query("DELETE FROM chat_push_subscriptions WHERE endpoint = $1 AND client_id = $2", [endpoint, clientId]);
+    send(response, 200, { subscribed: false });
+    return;
+  }
+
+  const subscription = body?.subscription;
+  const endpoint = typeof subscription?.endpoint === "string" ? subscription.endpoint : "";
+  const keys = subscription?.keys;
+  if (!endpoint.startsWith("https://") || endpoint.length > 2048
+    || typeof keys?.p256dh !== "string" || keys.p256dh.length > 256
+    || typeof keys?.auth !== "string" || keys.auth.length > 128) {
+    throw invalid(400, "A valid browser push subscription is required.");
+  }
+  await pool.query(
+    `INSERT INTO chat_push_subscriptions (endpoint, client_id, keys)
+     VALUES ($1, $2, $3::jsonb)
+     ON CONFLICT (endpoint) DO UPDATE
+     SET client_id = EXCLUDED.client_id, keys = EXCLUDED.keys, updated_at = NOW()`,
+    [endpoint, clientId, JSON.stringify(keys)],
+  );
+  send(response, 200, { subscribed: true });
+}
+
+async function notifyConversation(pool, conversation, message) {
+  if (!process.env.VAPID_PUBLIC_KEY || !process.env.VAPID_PRIVATE_KEY) return;
+  try {
+    webPush.setVapidDetails(
+      process.env.VAPID_SUBJECT || "https://chatypeople.netlify.app",
+      process.env.VAPID_PUBLIC_KEY,
+      process.env.VAPID_PRIVATE_KEY,
+    );
+  } catch (error) {
+    console.error("Could not configure Web Push:", error);
+    return;
+  }
+  const { rows } = conversation.type === "room"
+    ? await pool.query(
+      "SELECT endpoint, keys FROM chat_push_subscriptions WHERE client_id <> $1",
+      [message.clientId],
+    )
+    : await pool.query(
+      "SELECT endpoint, keys FROM chat_push_subscriptions WHERE client_id = ANY($1::text[]) AND client_id <> $2",
+      [memberList(conversation.members), message.clientId],
+    );
+  const payload = JSON.stringify({
+    title: `${message.sender} · ${conversation.name || "New message"}`,
+    body: message.text,
+    conversationId: conversation.id,
+  });
+  const results = await Promise.allSettled(rows.map((subscription) =>
+    webPush.sendNotification(
+      { endpoint: subscription.endpoint, keys: subscription.keys },
+      payload,
+      { TTL: 60 },
+    ),
+  ));
+  for (let index = 0; index < results.length; index += 1) {
+    const result = results[index];
+    if (result.status === "fulfilled") continue;
+    const statusCode = result.reason?.statusCode;
+    if (statusCode === 404 || statusCode === 410) {
+      await pool.query("DELETE FROM chat_push_subscriptions WHERE endpoint = $1", [rows[index].endpoint]);
+    } else {
+      console.error("Could not deliver a chat notification; push service status:", statusCode || "unknown");
+    }
+  }
+}
+
 async function handleMessages(request, response) {
   const conversationId = queryValue(request, "id");
   const pool = database();
@@ -282,7 +376,8 @@ async function handleMessages(request, response) {
     const after = Number(afterValue);
     if (!Number.isSafeInteger(after) || after < 0) throw invalid(400, "The message cursor must be a non-negative integer.");
     const { rows: messages } = await pool.query(
-      `SELECT id, conversation_id AS "conversationId", client_id AS "clientId", sender, text, created_at AS "createdAt"
+      `SELECT id, conversation_id AS "conversationId", client_id AS "clientId", sender, text,
+         created_at AS "createdAt", edited_at AS "editedAt"
        FROM chat_messages
        WHERE conversation_id = $1 AND id > $2
        ORDER BY id
@@ -293,12 +388,44 @@ async function handleMessages(request, response) {
     return;
   }
 
-  if (!requireMethod(request, response, "POST")) return;
+  if (!["POST", "PATCH", "DELETE"].includes(request.method)) {
+    response.setHeader("Allow", "GET, POST, PATCH, DELETE");
+    send(response, 405, { error: "Use GET, POST, PATCH, or DELETE for this endpoint." });
+    return;
+  }
   if (!conversation) throw invalid(404, "Conversation not found.");
   const body = bodyOf(request);
   const clientId = typeof body?.clientId === "string" ? body.clientId : "";
   if (conversation.type !== "room" && !memberList(conversation.members).includes(clientId)) {
     throw invalid(404, "Conversation not found.");
+  }
+  if (request.method === "PATCH" || request.method === "DELETE") {
+    const messageId = typeof body?.messageId === "string" || typeof body?.messageId === "number"
+      ? String(body.messageId)
+      : "";
+    if (!/^[1-9]\d*$/.test(messageId)) throw invalid(400, "A valid message ID is required.");
+    if (request.method === "DELETE") {
+      const { rowCount } = await pool.query(
+        "DELETE FROM chat_messages WHERE id = $1 AND conversation_id = $2 AND client_id = $3",
+        [messageId, conversationId, clientId],
+      );
+      if (!rowCount) throw invalid(404, "Message not found or you cannot delete it.");
+      send(response, 200, { deleted: true });
+      return;
+    }
+    const text = typeof body?.text === "string" ? body.text.trim() : "";
+    if (text.length < 1 || text.length > 2000) throw invalid(400, "Messages must be between 1 and 2,000 characters.");
+    const { rows } = await pool.query(
+      `UPDATE chat_messages
+       SET text = $1, edited_at = NOW()
+       WHERE id = $2 AND conversation_id = $3 AND client_id = $4
+       RETURNING id, conversation_id AS "conversationId", client_id AS "clientId",
+         sender, text, created_at AS "createdAt", edited_at AS "editedAt"`,
+      [text, messageId, conversationId, clientId],
+    );
+    if (!rows[0]) throw invalid(404, "Message not found or you cannot edit it.");
+    send(response, 200, { message: rows[0] });
+    return;
   }
   const sender = typeof body?.sender === "string" ? body.sender.trim() : "";
   const text = typeof body?.text === "string" ? body.text.trim() : "";
@@ -309,9 +436,15 @@ async function handleMessages(request, response) {
   const { rows: [message] } = await pool.query(
     `INSERT INTO chat_messages (conversation_id, client_id, sender, text)
      VALUES ($1, $2, $3, $4)
-     RETURNING id, conversation_id AS "conversationId", client_id AS "clientId", sender, text, created_at AS "createdAt"`,
+     RETURNING id, conversation_id AS "conversationId", client_id AS "clientId", sender, text,
+       created_at AS "createdAt", edited_at AS "editedAt"`,
     [conversationId, clientId, sender, text],
   );
+  try {
+    await notifyConversation(pool, conversation, message);
+  } catch (error) {
+    console.error("Message was saved, but push notification delivery failed:", error);
+  }
   send(response, 201, { message });
 }
 
@@ -331,4 +464,5 @@ module.exports = {
   users: run(handleUsers),
   conversations: run(handleConversations),
   messages: run(handleMessages),
+  notifications: run(handleNotifications),
 };
