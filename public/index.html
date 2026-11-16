@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <meta name="theme-color" content="#101116">
+    <meta name="description" content="Private chats, good people. Hosted on your laptop.">
+    <title>ChatyPeople — good people, good chats</title>
+    <link rel="stylesheet" href="/styles.css">
+  </head>
+  <body>
+    <main class="app-shell">
+      <aside class="sidebar" id="sidebar" aria-label="Your conversations">
+        <header class="sidebar-top">
+          <a class="brand" href="/" aria-label="ChatyPeople home">
+            <span class="brand-mark" aria-hidden="true">c</span>
+            <span>chaty<span>people</span></span>
+          </a>
+          <button class="icon-button new-chat-button" id="new-chat-button" type="button" aria-label="New chat" title="New chat">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+          </button>
+        </header>
+
+        <div class="sidebar-intro">
+          <div class="eyebrow">YOUR MESSAGES</div>
+          <div class="sidebar-title-row">
+            <h1>Inbox</h1>
+            <span class="inbox-count" id="inbox-count">1</span>
+          </div>
+        </div>
+
+        <label class="search-box">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.8"/><path d="m16 16 4 4"/></svg>
+          <span class="sr-only">Search conversations</span>
+          <input id="conversation-search" type="search" placeholder="Search chats or people…" autocomplete="off">
+          <kbd>⌘ K</kbd>
+        </label>
+
+        <div class="section-label"><span>MESSAGES</span><button class="text-button" id="new-message-link" type="button">NEW</button></div>
+        <nav class="conversation-list" id="conversation-list" aria-label="Messages"></nav>
+
+        <div class="sidebar-bottom">
+          <div class="hosting-status"><span class="status-pulse"></span><span>Private space <small>Hosted on this laptop</small></span><span class="lock-icon" aria-hidden="true">⌑</span></div>
+          <button class="profile-button" id="profile-button" type="button" aria-label="Change your display name">
+            <span class="avatar profile-avatar" id="profile-avatar">?</span>
+            <span class="profile-label"><strong id="profile-name">Set your name</strong><small>Personal account</small></span>
+            <svg class="profile-more" viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg>
+          </button>
+        </div>
+      </aside>
+
+      <section class="chat-panel" id="chat-panel" aria-label="Chat">
+        <header class="chat-header">
+          <button class="icon-button back-button" id="back-button" type="button" aria-label="Back to conversations">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>
+          </button>
+          <div class="chat-avatar" id="chat-avatar">L<span class="online-indicator"></span></div>
+          <div class="chat-heading">
+            <h2 id="chat-title">The Lounge</h2>
+            <p id="chat-subtitle"><span class="tiny-online"></span> A shared place to chat</p>
+          </div>
+          <div class="header-actions">
+            <button class="icon-button header-search-button" id="header-search-button" type="button" aria-label="Find a person" title="Find people">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.8"/><path d="m16 16 4 4"/></svg>
+            </button>
+            <button class="icon-button details-button" id="details-button" type="button" aria-label="Conversation details" title="Conversation details">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 11v5m0-8h.01"/></svg>
+            </button>
+          </div>
+        </header>
+
+        <div class="message-area" id="message-area" aria-live="polite" aria-relevant="additions text">
+          <section class="welcome-card" id="welcome-card">
+            <div class="welcome-orb" aria-hidden="true"><span>✳</span></div>
+            <div class="eyebrow">A LITTLE CORNER OF THE INTERNET</div>
+            <h3>Good people.<br><span>Better conversations.</span></h3>
+            <p>Pick a person and say hello.<br>Your next favorite conversation starts here.</p>
+            <button class="welcome-action" id="welcome-new-chat" type="button">Start a conversation <span aria-hidden="true">↗</span></button>
+          </section>
+          <div class="messages" id="messages"></div>
+        </div>
+
+        <footer class="composer-wrap">
+          <form class="composer" id="message-form">
+            <button class="composer-action" type="button" aria-label="Find people" id="composer-people">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10" cy="8" r="3"/><path d="M4.5 19a5.5 5.5 0 0 1 11 0m3-11v6m-3-3h6"/></svg>
+            </button>
+            <label class="sr-only" for="message-input">Write a message</label>
+            <textarea id="message-input" rows="1" maxlength="2000" placeholder="Write a message…" disabled></textarea>
+            <button class="send-button" id="send-button" type="submit" disabled aria-label="Send message">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m21 3-7.5 18-3.6-7.9L2 9.5 21 3Z"/><path d="M10 13.1 15.3 8"/></svg>
+            </button>
+          </form>
+          <p class="composer-hint" id="composer-hint">Your chats stay on this laptop <span>·</span> Enter to send</p>
+        </footer>
+      </section>
+    </main>
+
+    <dialog class="app-dialog profile-dialog" id="name-dialog" aria-labelledby="dialog-title">
+      <form id="name-form" method="dialog">
+        <button class="dialog-close" type="button" aria-label="Close">×</button>
+        <div class="dialog-symbol">✳</div>
+        <div class="eyebrow">YOUR PROFILE</div>
+        <h2 id="dialog-title">What do people call you?</h2>
+        <p>Your name helps your friends find you and know who's messaging.</p>
+        <label for="name-input">Display name</label>
+        <input id="name-input" name="name" maxlength="32" autocomplete="nickname" placeholder="e.g. Alex" required>
+        <button class="primary-button dialog-submit" type="submit">Save my name <span aria-hidden="true">→</span></button>
+      </form>
+    </dialog>
+
+    <dialog class="app-dialog new-chat-dialog" id="new-chat-dialog" aria-labelledby="new-chat-title">
+      <section class="new-chat-content">
+        <button class="dialog-close" id="new-chat-close" type="button" aria-label="Close">×</button>
+        <div class="eyebrow">MAKE IT A GOOD ONE</div>
+        <h2 id="new-chat-title">New conversation</h2>
+        <p class="dialog-description">Find a person or get your group together.</p>
+
+        <div class="mode-tabs" role="tablist" aria-label="Conversation type">
+          <button class="mode-tab selected" id="direct-mode" type="button" role="tab" aria-selected="true">Direct message</button>
+          <button class="mode-tab" id="group-mode" type="button" role="tab" aria-selected="false">New group</button>
+        </div>
+
+        <div id="group-name-wrap" hidden>
+          <label class="field-label" for="group-name">Group name</label>
+          <input class="dialog-input" id="group-name" maxlength="40" placeholder="e.g. Friday night crew">
+        </div>
+
+        <label class="dialog-search">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.8"/><path d="m16 16 4 4"/></svg>
+          <span class="sr-only">Find people</span>
+          <input id="people-search" type="search" placeholder="Search people by name…" autocomplete="off">
+        </label>
+        <div class="selected-people" id="selected-people" aria-live="polite"></div>
+        <div class="people-list" id="people-list" role="listbox" aria-label="People"></div>
+        <div class="dialog-bottom">
+          <span id="selection-hint">Choose someone to start a chat</span>
+          <button class="primary-button create-button" id="create-conversation" type="button" disabled>Start chatting <span aria-hidden="true">→</span></button>
+        </div>
+      </section>
+    </dialog>
+
+    <div class="toast" id="toast" role="status" aria-live="polite"></div>
+    <script src="/app.js" defer></script>
+  </body>
+</html>

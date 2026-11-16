@@ -1,0 +1,63 @@
+# ChatyPeople
+
+A dark, mobile-friendly chat app with a shared Lounge, searchable one-to-one direct messages, and named groups of up to 32 people. Choosing a non-empty display name is required before chatting; each message shows its sender's name.
+
+The app runs locally or deploys as Vercel functions with a Neon Postgres database. When `.env.local` contains the Neon URLs, the local app and deployed functions use the shared Neon database. Without a Neon URL, the local server falls back to `messages.json`. Vercel's serverless filesystem is temporary, so hosted data is stored in Postgres.
+
+## Start the chat
+
+1. Install Node.js if it is not already installed.
+2. Open PowerShell in this folder and run:
+
+   ```powershell
+   node server.js
+   ```
+
+3. On the laptop, open `http://localhost:3000`.
+4. To join from a phone or another computer on the same Wi-Fi, open the `On your Wi-Fi` address printed in the terminal (for example, `http://192.168.1.25:3000`).
+
+Keep the terminal open while using the local chat. If Windows Firewall asks, allow Node.js on your **private network** so devices on your Wi-Fi can connect. The local server is intended for a trusted local network.
+
+Set a display name in the app, then choose **New** to find someone or make a group. People become searchable after registering a name from their own device. Enter sends; Shift+Enter adds a line. With Neon configured, chats are shared between the local app and the deployed app.
+
+Run `npm run build` to build the static frontend into `dist`.
+
+Set a different port with the `PORT` environment variable if port 3000 is already in use:
+
+```powershell
+$env:PORT = "3001"
+node server.js
+```
+
+## Deploy to Vercel
+
+1. Create a Vercel account and a Neon Postgres database (for example, add Neon from the Vercel Marketplace and connect it to the project).
+2. In the Vercel project settings, add the database's pooled connection string as the `DATABASE_URL` environment variable for Production, Preview, and Development. Do not commit the connection string.
+3. Before deploying, you can import the local chat history. Create a private `.env.local` file in the project root (it is git-ignored) containing:
+
+   ```powershell
+   DATABASE_URL=your-Neon-pooled-connection-string
+   ```
+
+   Then run:
+
+   ```powershell
+   npm run push:neon
+   ```
+
+   The command imports local profiles, conversations, and messages by ID, and is safe to rerun. Keep the connection string private.
+4. From this project folder, use the Vercel CLI:
+
+   ```powershell
+   npx vercel
+   ```
+
+   Sign in and link the project when prompted. Then deploy:
+
+   ```powershell
+   npx vercel --prod
+   ```
+
+5. Open the production URL from Vercel. The API creates its tables and the Lounge on its first request; the database role must be allowed to create tables.
+
+The deployed database starts separately from local `messages.json`; local users, messages, and groups are not copied automatically. Vercel hosting makes the app internet-accessible. **Display names are not verified identities and this app does not yet have account authentication or invite controls**, so don't use it for sensitive conversations or treat a chosen name as proof of identity.
