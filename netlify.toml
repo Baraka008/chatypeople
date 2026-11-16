@@ -30,3 +30,4 @@ status = 200
 from = "/api/notifications"
 to = "/.netlify/functions/notifications"
 status = 200
+force = true

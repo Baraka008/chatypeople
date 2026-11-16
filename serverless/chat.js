@@ -1,12 +1,17 @@
 const { attachDatabasePool } = require("@vercel/functions");
 const { Pool } = require("pg");
 const { createHash, randomUUID } = require("node:crypto");
-const webPush = require("web-push");
 
 const ROOM = { id: "lounge", type: "room", name: "The Lounge", members: [] };
 const MAX_GROUP_MEMBERS = 32;
 let pool;
 let schemaReady;
+let webPushPromise;
+
+function loadWebPush() {
+  if (!webPushPromise) webPushPromise = import("web-push");
+  return webPushPromise;
+}
 
 function database() {
   if (!process.env.DATABASE_URL) {
@@ -315,6 +320,7 @@ async function handleNotifications(request, response) {
 async function notifyConversation(pool, conversation, message) {
   if (!process.env.VAPID_PUBLIC_KEY || !process.env.VAPID_PRIVATE_KEY) return;
   try {
+    const webPush = await loadWebPush();
     webPush.setVapidDetails(
       process.env.VAPID_SUBJECT || "https://chatypeople.netlify.app",
       process.env.VAPID_PUBLIC_KEY,
