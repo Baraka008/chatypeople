@@ -84,13 +84,29 @@ async function requestJson(url, options = {}) {
     ...options,
     headers: options.body ? { "Content-Type": "application/json", ...options.headers } : options.headers,
   });
-  const result = await response.json();
+  const isJson = response.headers.get("content-type")?.includes("json");
+  const result = isJson ? await response.json() : null;
   if (!response.ok) {
-    const error = new Error(result.error || "Something went wrong.");
+    const error = new Error(result?.error || `The request failed (${response.status}).`);
     error.status = response.status;
     throw error;
   }
+  if (!isJson) throw new Error("The server returned an unexpected response.");
   return result;
+}
+
+async function requestNotificationJson(options = {}) {
+  try {
+    return await requestJson("/api/notifications", options);
+  } catch (error) {
+    if (error.status !== 404) throw error;
+    try {
+      return await requestJson("/.netlify/functions/notifications", options);
+    } catch (fallbackError) {
+      if (fallbackError.status === 404) throw error;
+      throw fallbackError;
+    }
+  }
 }
 
 function updateProfile() {
@@ -409,7 +425,7 @@ async function toggleNotifications() {
       const registration = await navigator.serviceWorker?.getRegistration();
       const subscription = await registration?.pushManager?.getSubscription();
       if (subscription) {
-        await requestJson("/api/notifications", {
+        await requestNotificationJson({
           method: "POST",
           body: JSON.stringify({ clientId, action: "unsubscribe", endpoint: subscription.endpoint }),
         });
@@ -442,7 +458,7 @@ async function toggleNotifications() {
   let pushEnabled = false;
   if ("serviceWorker" in navigator && "PushManager" in window) {
     try {
-      const { publicKey } = await requestJson("/api/notifications");
+      const { publicKey } = await requestNotificationJson();
       const registration = await navigator.serviceWorker.ready;
       let subscription = await registration.pushManager.getSubscription();
       if (!subscription) {
@@ -451,7 +467,7 @@ async function toggleNotifications() {
           applicationServerKey: decodeApplicationKey(publicKey),
         });
       }
-      await requestJson("/api/notifications", {
+      await requestNotificationJson({
         method: "POST",
         body: JSON.stringify({ clientId, subscription: subscription.toJSON() }),
       });
