@@ -7,3 +7,6 @@ dist/
 messages.json
 messages.json.tmp
 .neon
+
+# Local Netlify folder
+.netlify

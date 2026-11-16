@@ -2,7 +2,7 @@
 
 A dark, mobile-friendly chat app with a shared Lounge, searchable one-to-one direct messages, and named groups of up to 32 people. Choosing a non-empty display name is required before chatting; each message shows its sender's name.
 
-The app runs locally or deploys as Vercel functions with a Neon Postgres database. When `.env.local` contains the Neon URLs, the local app and deployed functions use the shared Neon database. Without a Neon URL, the local server falls back to `messages.json`. Vercel's serverless filesystem is temporary, so hosted data is stored in Postgres.
+The app runs locally or deploys to Vercel or Netlify with a Neon Postgres database. When `.env.local` contains the Neon URLs, the local app and deployed functions use the shared Neon database. Without a Neon URL, the local server falls back to `messages.json`. Serverless filesystems are temporary, so hosted data is stored in Postgres.
 
 ## Start the chat
 
@@ -61,3 +61,12 @@ node server.js
 5. Open the production URL from Vercel. The API creates its tables and the Lounge on its first request; the database role must be allowed to create tables.
 
 The deployed database starts separately from local `messages.json`; local users, messages, and groups are not copied automatically. Vercel hosting makes the app internet-accessible. **Display names are not verified identities and this app does not yet have account authentication or invite controls**, so don't use it for sensitive conversations or treat a chosen name as proof of identity.
+
+## Deploy to Netlify
+
+1. In Netlify, create or select a site and connect this GitHub repository. Set the build command to `npm run build` and the publish directory to `dist` (also configured in `netlify.toml`).
+2. In the Netlify site settings, add `DATABASE_URL` using the Neon pooled connection string. Keep it private; do not add it to Git or a client-side environment variable.
+3. Trigger a deploy from Netlify. The `netlify/functions` API adapters and `netlify.toml` redirects route chat API requests to serverless functions backed by Neon.
+4. Open the site's Netlify URL and test profile setup and a message in The Lounge.
+
+The database role must be allowed to create tables on the first API request. Netlify and Vercel can both serve the same Neon database.

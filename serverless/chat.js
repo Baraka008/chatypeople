@@ -13,7 +13,7 @@ function database() {
   }
   if (!pool) {
     pool = new Pool({ connectionString: secureConnectionString(process.env.DATABASE_URL), max: 5 });
-    attachDatabasePool(pool);
+    if (process.env.VERCEL) attachDatabasePool(pool);
   }
   return pool;
 }
